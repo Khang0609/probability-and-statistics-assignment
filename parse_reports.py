@@ -128,14 +128,30 @@ def process_folder(folder_path):
         print(f"[CẢNH BÁO] Không tìm thấy file timing summary trong {folder.name}. Bỏ qua.")
         return
 
-    timing_file = timing_files[0]
-    print(f"File timing: {timing_file.name}")
-    try:
-        period, wns, delay = parse_timing_summary(timing_file)
-        print(f"  -> Period: {period} ns, WNS: {wns} ns, Delay: {delay:.4f} ns")
-    except Exception as e:
-        print(f"[LỖI] Không thể đọc timing: {e}")
+    # Lọc các file trùng lặp
+    candidate_files = []
+    for tf in timing_files:
+        if tf not in candidate_files:
+            candidate_files.append(tf)
+
+    # Thử parse các file timing cho đến khi tìm được file có thông số hợp lệ
+    period = wns = delay = None
+    timing_file = None
+    for tf in candidate_files:
+        try:
+            p, w, d = parse_timing_summary(tf)
+            period, wns, delay = p, w, d
+            timing_file = tf
+            break
+        except Exception:
+            continue
+
+    if timing_file is None:
+        print(f"[CẢNH BÁO] Không trích xuất được Period/WNS từ các file timing trong {folder.name}. Bỏ qua.")
         return
+
+    print(f"File timing: {timing_file.name}")
+    print(f"  -> Period: {period} ns, WNS: {wns} ns, Delay: {delay:.4f} ns")
 
     # 2. Tìm tất cả các file power report (.rpt)
     # Loại trừ file timing
@@ -183,11 +199,19 @@ def process_folder(folder_path):
 
     print(f"[THÀNH CÔNG] Đã lưu {len(records)} dòng vào: {csv_path.resolve()}")
 
+    # Nếu folder là Vedict, lưu thêm bản Vedic_power_summary.csv
+    if folder.name.lower() == "vedict":
+        alias_csv = folder / "Vedic_power_summary.csv"
+        with open(alias_csv, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(records)
+        print(f"[THÀNH CÔNG] Đã lưu thêm bản alias tại: {alias_csv.resolve()}")
+
 def main():
     base_dir = Path(__file__).resolve().parent
 
-    # Theo yêu cầu: Mở các folder (Array, Booth), bỏ qua Vedict do thiếu thông số timing
-    target_folders = ["Array", "Booth"]
+    target_folders = ["Array", "Booth", "Vedict"]
 
     for folder_name in target_folders:
         folder_path = base_dir / folder_name
